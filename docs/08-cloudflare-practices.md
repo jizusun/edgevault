@@ -28,12 +28,12 @@ Sources: [Workers best practices](https://developers.cloudflare.com/workers/best
 | Practice | Enforced by |
 |---|---|
 | Check body size before reading it (128 MB memory limit); stream when possible | Unit test for the body-limit middleware; import scenario with an oversized payload |
-| No request-scoped state in module globals | Lint rule against module-level mutable state in `src/` |
-| Always `await` or `waitUntil` promises; `waitUntil` has a 30 s limit | Biome's `noFloatingPromises` rule |
-| Do not use `passThroughOnException` | Lint rule |
+| No request-scoped state in module globals | Semgrep rule against module-level mutable state in `src/` |
+| Always `await` or `waitUntil` promises; `waitUntil` has a 30 s limit | Oxlint type-aware `no-floating-promises` and `no-misused-promises` |
+| Do not use `passThroughOnException` | Semgrep rule |
 | Use bindings, not REST APIs, from inside the Worker | Code review; no Cloudflare API client in runtime dependencies |
-| Use Web Crypto (`crypto.getRandomValues`, `crypto.randomUUID`); never `Math.random` for security | Lint rule banning `Math.random` in `src/` |
-| Compare secrets with `timingSafeEqual` | Lint rule banning `===` on values named `hash`, `token`, `secret`; unit tests |
+| Use Web Crypto (`crypto.getRandomValues`, `crypto.randomUUID`); never `Math.random` for security | Semgrep rule banning `Math.random` in `src/` |
+| Compare secrets with `timingSafeEqual` | Semgrep rule banning `===` on values named `hash`, `token`, `secret`, `code`; unit tests |
 
 ## D1
 

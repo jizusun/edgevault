@@ -18,7 +18,7 @@ Both adapters for a port run the same contract test file.
 
 ## Consequences
 
-- No `if (plan === "free")` in business logic. A lint rule forbids reading `PLAN_PROFILE` outside `src/composition/`.
+- No `if (plan === "free")` in business logic. A Semgrep rule forbids reading `PLAN_PROFILE` outside `src/composition/`.
 - The `free` profile pays the cost of a Durable Object call for password hashing. The `paid` profile hashes inline.
 - A user can start on `free` and switch to `paid` by changing one variable and redeploying.
 - Plan limits are tested as budgets, not trusted from documentation.

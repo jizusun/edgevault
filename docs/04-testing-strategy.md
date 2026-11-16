@@ -261,7 +261,7 @@ Free-plan limits are product requirements, so they are tests.
 
 | Stage | Content | Trigger |
 |---|---|---|
-| 1. static | typecheck (strict), lint (including the rules in [08-cloudflare-practices.md](08-cloudflare-practices.md)), dependency-cruiser layering rules, gitleaks, `npm audit`, SQL-string lint, spell check (typos), GitHub Actions security lint (zizmor), Wrangler config checks (`nodejs_compat`, source maps, observability, `wrangler types` diff), migration lint | every push |
+| 1. static | typecheck (`tsc --noEmit`, strict), Biome (format and lint), Oxlint type-aware rules, Semgrep project rules (including those in [08-cloudflare-practices.md](08-cloudflare-practices.md)), knip, type-coverage, dependency-cruiser layering rules, gitleaks, `npm audit` and osv-scanner, spell check (typos), GitHub Actions security lint (zizmor), Wrangler config checks (`nodejs_compat`, source maps, observability, `wrangler types` diff), migration lint | every push |
 | 2. harness guard | PR type vs changed paths, coverage matrix, scenario parser strictness | every PR |
 | 3. unit | Vitest, fast-check | every push |
 | 4. component (R1) | scenarios in-process with `@cloudflare/vitest-plugin`, both plan profiles | every push |

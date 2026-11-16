@@ -30,7 +30,9 @@ Questions that have been answered are listed at the end, with the answer.
 | 15 | Server-side hashing rounds | 600,000 (same as client default), lower (for example 100,000), or configurable | **Configurable, default 600,000.** About 100 ms per login, done in the Durable Object on Free. A lower count is cheaper but weakens protection of a leaked database, because the client already hashed with its own rounds before sending. |
 | 16 | Attachments in the MVP | After the MVP (current plan), or in M3 | **Right after the MVP.** The storage design is ready ([ADR 0007](adr/0007-attachment-storage.md)), but organizations and TOTP come first. |
 | 17 | Email | None (current plan), Cloudflare Email Service to verified addresses on Free, any recipient on Paid | **None in the MVP.** Invites work without email. Email is an option after the MVP. |
-| 18 | TypeScript version | 6.0 (current plan) or 7.0 | **6.0** until M0 spike 10 shows the toolchain supports 7. |
+| 18 | TypeScript version | 6.0 (current plan) or 7.0 | **6.0** until M0 spike 10 shows the toolchain supports 7. Choosing Oxlint over typescript-eslint removes one blocker ([ADR 0011](adr/0011-toolchain.md)). |
+| 21 | Package manager | npm (current plan), Bun, pnpm | **npm in CI**, Bun allowed locally. Bun installs faster and launched our Workers tests fine in the POC, but `bun test` cannot run them and our test tools are documented with Node. |
+| 22 | Chanfana for OpenAPI | Adopt, or keep plain Hono plus zod | **Decided by M0 spike 12.** |
 
 ## Answered
 
@@ -39,4 +41,6 @@ Questions that have been answered are listed at the end, with the answer.
 | 2 | Language | **TypeScript** ([ADR 0001](adr/0001-typescript-on-workers.md)). |
 | 13 | Token signing | **HMAC-SHA-256** ([ADR 0006](adr/0006-token-signing.md)). The POC measured about 0.015 ms per sign and verify. |
 | 19 | Organizations and TOTP in the MVP | **Yes**, both, as asked by the owner for family use ([ADR 0008](adr/0008-organizations.md), [ADR 0009](adr/0009-totp.md)). |
+| 23 | ORM | **Drizzle as a query builder**, with sync and access checks as reviewed SQL ([ADR 0010](adr/0010-drizzle-for-d1.md)). Subject to the M0 bundle-size check. |
+| 24 | Lint and static analysis | **Biome, Oxlint type-aware, Semgrep**, plus `tsc`, knip, dependency-cruiser, type-coverage, gitleaks ([ADR 0011](adr/0011-toolchain.md)). |
 | 20 | Default attachment storage | **R2 by default, KV as the no-card option**, as asked by the owner ([ADR 0007](adr/0007-attachment-storage.md)). |

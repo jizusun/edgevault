@@ -23,7 +23,7 @@ Facts about Cloudflare limits were checked against the Cloudflare docs in Novemb
 | [07-open-questions.md](07-open-questions.md) | Decisions for the project owner, with defaults |
 | [08-cloudflare-practices.md](08-cloudflare-practices.md) | Cloudflare best practices and how CI enforces them |
 | [09-tech-stack.md](09-tech-stack.md) | What we use, with versions, and what we deliberately do not use |
-| [adr/](adr/) | Architecture decision records 0001 to 0009 |
+| [adr/](adr/) | Architecture decision records 0001 to 0011 |
 | [spikes/](spikes/) | Results of experiments (POCs) that replaced guesses with measurements |
 | [../THREAT_MODEL.md](../THREAT_MODEL.md), [../SECURITY.md](../SECURITY.md) | Threat model (draft) and vulnerability reporting |
 
@@ -40,6 +40,8 @@ Facts about Cloudflare limits were checked against the Cloudflare docs in Novemb
 | [0007](adr/0007-attachment-storage.md) | Attachments in R2 by default, KV without a card |
 | [0008](adr/0008-organizations.md) | Organizations and collections for families |
 | [0009](adr/0009-totp.md) | TOTP in vault items and as a login second factor |
+| [0010](adr/0010-drizzle-for-d1.md) | Drizzle as a typed query builder for D1 |
+| [0011](adr/0011-toolchain.md) | Toolchain: Node and npm, Biome, Oxlint, Semgrep, and other static analysis |
 
 ## Reading order
 

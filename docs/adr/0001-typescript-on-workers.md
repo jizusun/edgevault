@@ -12,7 +12,7 @@ The server must run on Cloudflare Workers, on the Free and Paid plans. Two reali
 
 ## Decision
 
-Use TypeScript in strict mode with Hono for HTTP, zod for validation at the boundary, and Vitest with `@cloudflare/vitest-plugin` for tests (the renamed successor of the deprecated `@cloudflare/vitest-pool-workers`). Versions are in [09-tech-stack.md](../09-tech-stack.md).
+Use TypeScript in strict mode with Hono for HTTP, zod for validation at the boundary, Drizzle for D1 queries ([ADR 0010](0010-drizzle-for-d1.md)), and Vitest with `@cloudflare/vitest-plugin` for tests (the renamed successor of the deprecated `@cloudflare/vitest-pool-workers`). Versions are in [09-tech-stack.md](../09-tech-stack.md).
 
 ## Reasons
 

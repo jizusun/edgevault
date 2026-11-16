@@ -7,6 +7,8 @@ Before changing the design, I ran small experiments to replace guesses with meas
 - **Password hashing does not fit in a Free-plan Worker.** One server-side hash takes about 100 ms of CPU. The Free limit is 10 ms. Hashing must move to a Durable Object on Free.
 - **Signing tokens is cheap.** HMAC signing and checking costs about 0.015 ms, so it fits easily.
 - **Real clients behave differently from older docs.** The current web vault sends the newer registration shape, calls some endpoints the design had missed, and refuses to talk to a server over plain HTTP.
+- **Bun can install packages and launch our tests, but cannot run them itself.** `bun test` cannot load Cloudflare's runtime modules.
+- **Both Biome and Oxlint catch an un-awaited promise**, the most common Workers bug pattern.
 - **Organizations could not be captured through the browser yet.** A pop-up in the web vault blocked the form. The organization endpoint list comes from reading Vaultwarden's route table instead, and M0 must confirm it with real traffic.
 
 Nothing here is production code. The experiments ran in throwaway folders and are not committed.
@@ -89,3 +91,30 @@ Vaultwarden's source shows that when email is off, an invited member is marked "
 | Can a Free-plan Worker send email? | Not to arbitrary recipients. Sending to verified destination addresses in your own account is free on all plans | [Email Service pricing](https://developers.cloudflare.com/email-service/platform/pricing/) |
 | Which test plugin? | `@cloudflare/vitest-pool-workers` is deprecated and renamed to `@cloudflare/vitest-plugin` (1.8.2, supports Vitest 4 and 5) | npm registry |
 | TypeScript 7? | TypeScript 7.0.2 is out, but `typescript-eslint` accepts only `>=4.8.4 <6.1.0`, so the wider tooling may not support 7 yet | npm registry |
+
+## 4. Bun and linters
+
+### Bun with Workers
+
+A minimal Worker that writes to and reads from D1, with one Vitest test using `@cloudflare/vitest-plugin` 1.8 and Vitest 5. Bun 1.4.4.
+
+| Step | Result |
+|---|---|
+| `bun add -d vitest@5 @cloudflare/vitest-plugin wrangler typescript@6` | Installed 72 packages in about 25 s |
+| `npx vitest run` (Node runs Vitest) | 1 test passed |
+| `bun --bun vitest run` (Bun runs Vitest) | 1 test passed; the Worker and D1 still ran in `workerd` |
+| `bun test` (Bun's own test runner) | Failed: `Cannot find package 'cloudflare:workers'` |
+| `bunx wrangler dev`, then a request | Returned `{"n":1}` from D1 |
+
+Conclusion: Bun can install packages and launch our tools, but its own test runner cannot run Worker tests, and production always runs in `workerd`.
+
+### Linters on a floating promise
+
+A sample file with an un-awaited async call and an `any`:
+
+| Tool | Result |
+|---|---|
+| Oxlint 1.93 with `oxlint-tsgolint` 7.0, `--type-aware` | Reported `typescript(no-floating-promises)` and `typescript(no-explicit-any)` |
+| Biome 2.6 with `noFloatingPromises` | Reported `lint/nursery/noFloatingPromises` and `lint/suspicious/noExplicitAny`; also warned that the configuration should be migrated, so the rule's config location has changed in this version |
+
+Both catch the most important Workers bug pattern. ADR 0011 assigns type-aware rules to Oxlint.

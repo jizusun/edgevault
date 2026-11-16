@@ -33,7 +33,7 @@ A deployed Worker that answers `GET /api/alive`, with the whole test machinery w
 
 Deliverables:
 
-- Tooling from [09-tech-stack.md](09-tech-stack.md): TypeScript 6 strict, Vitest 5, `@cloudflare/vitest-plugin`, Biome, dependency-cruiser, gitleaks, zizmor, typos, CI.
+- Tooling from [09-tech-stack.md](09-tech-stack.md) and [ADR 0011](adr/0011-toolchain.md): TypeScript 6 strict, Node and npm, Vitest 5, `@cloudflare/vitest-plugin`, Drizzle, Biome, Oxlint (type-aware), Semgrep rules, knip, type-coverage, dependency-cruiser, gitleaks, zizmor, typos, CI.
 - Scenario parser, printers for `sync of` and `stored vault of`, runner R1, and runner R2 over HTTPS.
 - Scenarios for `alive`, `now`, `version`, `config`.
 - Harness guard CI job (PR type vs paths, coverage matrix).
@@ -53,7 +53,10 @@ Spikes, with written results in `docs/spikes/`:
 | 7 | Registration shapes and "V2" accounts in current clients | **Partly done:** web vault 2026.10.1 recorded |
 | 8 | Per-PR preview environments | open |
 | 9 | Record the organization and TOTP flows from a real web vault | open (blocked by a web vault pop-up in the design-phase attempt) |
-| 10 | TypeScript 7 support across the toolchain | open; start on 6.0 |
+| 10 | TypeScript 7 support across the toolchain (Stryker, dependency-cruiser, knip, Drizzle) | open; start on 6.0. Oxlint already tracks 7 |
+| 11 | Bundle size and cold-start CPU with Drizzle and Hono on the Free plan | open; fall back to plain SQL behind the same adapter if significant |
+| 12 | Chanfana: does a generated OpenAPI spec help the endpoint coverage check enough to adopt it? | open |
+| 13 | Bun as the local package manager and the `bun --bun vitest` launcher | **Local result:** both work; `bun test` cannot run Worker tests ([POC notes](spikes/2026-11-design-pocs.md#4-bun-and-linters)) |
 
 Exit criteria: CI is green with all stages that exist; a red scenario can be written, seen failing, and fixed; spike results update the design and ADRs where they change a decision.
 
