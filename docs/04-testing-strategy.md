@@ -88,13 +88,14 @@ How to read it:
 
 ```csv
 # specs/accounts/prelogin.table.csv
-case,email,registered,expect_status,expect_kdf,expect_iterations
-unknown email gets defaults,nobody@example.com,no,200,pbkdf2,600000
-known email gets own settings,alice@example.com,yes (argon2id 3 iter),200,argon2id,3
-malformed email is rejected,not-an-email,no,400,,
+case,client,email,registered,expect_status,expect_kdf,expect_iterations
+known email gets its own settings,web 2026.10,alice@example.com,yes (argon2id 3 iter),200,argon2id,3
+unknown email gets settings from the common list,web 2026.10,nobody@example.com,no,200,one-of-common-list,
+unknown email gets the same answer twice,web 2026.10,nobody@example.com,no,200,same-as-previous-row,
+malformed email is rejected,web 2026.10,not-an-email,no,400,,
 ```
 
-(The values above are examples. M0 verifies defaults against the oracle.)
+(Values are examples. M0 verifies them against the oracle. The `client` column lets the same behavior be specified per client version; see [03-api-surface.md](03-api-surface.md#client-version-differences).)
 
 ### Constrained tests: assertions are mandatory
 
@@ -114,7 +115,7 @@ There is one runner implementation per execution target. All read the same files
 
 | Runner | Target | Used for |
 |---|---|---|
-| `R1 in-process` | The Worker app with Miniflare D1 and Durable Object, called directly | Component level, every commit |
+| `R1 in-process` | The Worker app with Miniflare D1 and Durable Object, called directly. Every scenario runs once with `PLAN_PROFILE=free` and once with `paid`, unless it is tagged to one profile | Component level, every commit |
 | `R2 http` | `wrangler dev` locally, or a deployed staging URL | Contract level; proves the bundle, bindings, and real HTTP behave like R1 |
 | `R3 oracle` | A reference Vaultwarden container (test dependency only, no code copied) | Validates that scenario expectations match real Bitwarden-compatible behavior |
 
@@ -179,7 +180,20 @@ Passing tests only help if they would fail when the code is wrong.
    - Bitwarden's own SDK live tests, which Vaultwarden also runs against itself in its `sdk-live-tests.yml` workflow. We use the SDK's published test vectors for crypto fixtures and the live tests as a contract check.
 3. **Property-based tests** (fast-check) for the domain layer: for any sequence of create, update, trash, restore, delete, move operations, invariants hold (item belongs to one user, folder exists or is null, revision date never goes backward, sync equals the sum of operations).
 4. **Characterization tests.** For behaviors we only know from the oracle (error bodies, field names), the first scenario is recorded from the oracle, reviewed by a human, and committed.
-5. **Human exploratory testing** with real clients before each release, following a checklist in the repo (added in M3).
+5. **Browser end-to-end matrix.** Vaultwarden runs one Playwright suite against several database backends and SSO variants. Our equivalent runs the same Playwright tests against both plan profiles (`free` and `paid`).
+6. **Human exploratory testing** with real clients before each release, following a checklist in the repo (added in M3).
+
+## Security scenarios
+
+Security behavior is specified as scenarios too, so it cannot silently regress:
+
+- **No account enumeration:** prelogin for an unknown email returns settings that look real and stay the same between calls; login for an unknown email and for a wrong password return the same status and body.
+- **Throttle and lockout:** after N failed logins for one account, further attempts are delayed or refused, even when they come from different IPs. Another account is unaffected.
+- **Token purpose separation:** a table with every issued token type against every verifier; only the matching pair is accepted.
+- **Stale tokens:** after a password change or "deauthorize sessions", previously issued access and refresh tokens are rejected.
+- **Cross-account access:** every read and write endpoint is called with another user's ids and must fail without revealing whether the id exists.
+- **Oversized input:** bodies and cipher payloads above the limits are rejected before they are fully read.
+- **Redaction:** a scenario checks that the log output of login, sync, and import contains no token, hash, email, or ciphertext (the runner captures logs).
 
 ## Budget tests
 
@@ -189,12 +203,13 @@ Free-plan limits are product requirements, so they are tests.
 - **Query count:** a scenario can declare `BUDGET queries <= N`. Free allows 50 per request.
 - **CPU time:** local CPU timing is not reliable. A nightly job runs a short script against staging and reads CPU time from Workers Logs. It fails if login, sync, or item create exceeds 10 ms on the `free` profile, except where the design says the work is offloaded to the Durable Object.
 - **Payload size:** unit tests for the cipher size cap use D1's 2,000,000 byte row limit as the upper bound.
+- **Durable Object quota:** a scenario can declare `BUDGET do_requests <= N`. A login must use at most two Durable Object requests, so the Free allowance of 100,000 per day supports tens of thousands of logins.
 
 ## CI stages
 
 | Stage | Content | Trigger |
 |---|---|---|
-| 1. static | typecheck (strict), lint, dependency-cruiser layering rules, gitleaks, `npm audit`, SQL-string lint | every push |
+| 1. static | typecheck (strict), lint (including the rules in [08-cloudflare-practices.md](08-cloudflare-practices.md)), dependency-cruiser layering rules, gitleaks, `npm audit`, SQL-string lint, spell check (typos), GitHub Actions security lint (zizmor), Wrangler config checks (`nodejs_compat`, source maps, observability, `wrangler types` diff), migration lint | every push |
 | 2. harness guard | PR type vs changed paths, coverage matrix, scenario parser strictness | every PR |
 | 3. unit | Vitest, fast-check | every push |
 | 4. component (R1) | scenarios in-process with Miniflare | every push |
@@ -206,9 +221,14 @@ Free-plan limits are product requirements, so they are tests.
 
 Stages 1 to 5 must be green to merge. Stages 6 to 9 are reported on the PR where they run, and a regression there blocks release.
 
+## Learning from Vaultwarden's tests
+
+What Vaultwarden does that we keep: unit tests with literal JSON payloads per client format (we turn these into scenario table rows), nightly SDK live tests, an e2e suite across backends, and a test-only seeder compiled only into test builds. What we do differently: scenarios as data instead of test code, real D1 and Durable Object instead of in-memory fakes, and a CI guard on what each PR may change.
+
 ## Open spikes for M0
 
 - Stryker with `@cloudflare/vitest-pool-workers`: does it work, how slow is it?
 - Can the in-process runner expose D1 `meta` per request for budget assertions?
 - Can R3 (Vaultwarden oracle) use the same scenario files with a small translation layer for ids?
 - Which Bitwarden SDK live tests apply to our MVP endpoints, and how do we run them against a Worker?
+- Which registration payload shapes and account versions do current clients send? Build the first `client:` table from real client traffic.

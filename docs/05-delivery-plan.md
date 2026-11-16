@@ -14,6 +14,7 @@ Deliverables:
 - Scenario parser, printers for `sync of` and `stored vault of`, runner R1, and runner R2.
 - Scenarios for `alive`, `now`, `version`, `config`.
 - Harness guard CI job (PR type vs paths, coverage matrix).
+- CI checks from [08-cloudflare-practices.md](08-cloudflare-practices.md): Wrangler config checks, `wrangler types` diff, migration lint, plus spell check and GitHub Actions security lint (zizmor).
 - Spikes with written results in `docs/spikes/`:
   1. PBKDF2 (600,000 iterations) CPU cost on the Free plan, inline vs Durable Object.
   2. Workers Rate Limiting binding on Free.
@@ -21,6 +22,8 @@ Deliverables:
   4. Per-request D1 `meta` access in the in-process runner.
   5. Vaultwarden container as oracle (R3) with shared scenario files.
   6. Running Bitwarden SDK live tests against a Worker.
+  7. Which registration payload shapes and account versions ("V2") current clients send; first `client:` table of scenarios.
+  8. Per-PR preview environments for the contract stage.
 - Staging environment deployed from `main`.
 
 Exit criteria: CI is green with all stages that exist at this point; a red scenario can be written, seen failing, and fixed; spike results update [02-architecture.md](02-architecture.md) and the ADRs where they change a decision.
@@ -29,7 +32,7 @@ Exit criteria: CI is green with all stages that exist at this point; a red scena
 
 Endpoints in [03-api-surface.md](03-api-surface.md#m1-accounts-and-login).
 
-Exit criteria: `bw` CLI can register (via the new flow), log in, refresh a token, and log out against `wrangler dev` and staging. Password change rotates the security stamp and old tokens stop working. Login and prelogin scenarios include failure cases and account-enumeration checks. A short threat model is merged with this milestone.
+Exit criteria: `bw` CLI can register (via the new flow), log in, refresh a token, and log out against `wrangler dev` and staging. Password change rotates the security stamp and old tokens stop working. Login and prelogin scenarios include failure cases and account-enumeration checks. [THREAT_MODEL.md](../THREAT_MODEL.md) is reviewed against the implemented design and updated in this milestone's PRs. The per-account Durable Object ([ADR 0005](adr/0005-per-account-durable-object.md)) and token design ([ADR 0006](adr/0006-token-signing.md)) are implemented here.
 
 ### M2. Vault
 
@@ -89,5 +92,7 @@ Target PR size: under about 400 changed lines excluding generated files and scen
 | Oracle (Vaultwarden) behavior differs from official Bitwarden | Triage each difference; prefer official docs and SDK tests when they disagree with Vaultwarden |
 | Stryker does not work in the Workers pool | Mutation testing at unit level only, plus recorded fault injection (see spikes) |
 | D1 daily limits hit by a busy account on Free | Budget tests; document the upgrade path; the Paid profile removes the daily caps |
-| Security bug in a young project | Threat model, rate limits, dependency audit, minimal feature set; the README says plainly that the project is unaudited |
+| Security bug in a young project | Threat model, strict per-account throttle, dependency audit, minimal feature set; the README says plainly that the project is unaudited |
+| Durable Object quota (100,000 requests per day on Free) is exhausted and login stops | Budget test, at most two Durable Object calls per login, monitoring checklist, upgrade path |
+| Clients change registration or account formats (shapes differ by client version) | `client:` column in scenario tables; nightly contract job on latest clients; oracle check |
 | Web vault license or redistribution questions | Open question 4; the build downloads a pinned upstream release rather than committing it |

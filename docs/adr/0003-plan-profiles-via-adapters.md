@@ -8,7 +8,7 @@ Free and Paid Workers plans differ in CPU time per request (10 ms vs 30 s defaul
 
 ## Decision
 
-Define ports for everything whose implementation depends on the plan (`PasswordHasher`, `RateLimiter`, later `BlobStore`). Provide one adapter per plan profile. A composition root reads `PLAN_PROFILE` (`free` or `paid`) and wires adapters. Domain and application code never reads the profile.
+Define ports for everything whose implementation depends on the plan (`PasswordHasher`, later `BlobStore`). Per-account login throttling is the same on both plans and is described in [ADR 0005](0005-per-account-durable-object.md). Provide one adapter per plan profile. A composition root reads `PLAN_PROFILE` (`free` or `paid`) and wires adapters. Domain and application code never reads the profile.
 
 Both adapters for a port run the same contract test file.
 
@@ -22,7 +22,7 @@ Both adapters for a port run the same contract test file.
 ## Open points for the M0 spikes
 
 - If WebCrypto PBKDF2 turns out not to count against Free CPU time, the `free` profile could hash inline and the Durable Object path becomes optional.
-- If the Rate Limiting binding is unavailable on Free, the `free` rate limiter uses a D1 counter with a coarse window, and we document the extra writes.
+- If the Rate Limiting binding turns out to be unavailable on Free, the coarse first layer falls back to a counter inside a Durable Object, and we document the extra Durable Object requests. The strict per-account throttle does not depend on the binding.
 
 ## Alternatives considered
 

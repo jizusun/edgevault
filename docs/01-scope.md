@@ -41,6 +41,10 @@ TOTP two-factor login, attachments (KV on Free without a card, R2 where availabl
 - Matching Vaultwarden's or Bitwarden's internal code structure.
 - Running on anything other than Cloudflare.
 
+## Security documents
+
+[THREAT_MODEL.md](../THREAT_MODEL.md) and [SECURITY.md](../SECURITY.md) exist from the first commit and are kept current. The README states that the project is unaudited.
+
 ## Acceptance criteria for the MVP
 
 The MVP is done when all of these hold on a fresh Cloudflare account on the Free plan:
@@ -58,6 +62,6 @@ Bitwarden ships client changes often. We pin tested client versions in the compa
 
 ## Legal hygiene
 
-- This is a clean-room implementation of the observable API. We read other projects to learn behavior and structure, but we do not copy code from AGPL projects such as Vaultwarden.
+- This is an **independent implementation**, not a strict clean-room one. While preparing this design I read parts of Vaultwarden's source (AGPL-3.0), including route tables, tests, and its threat model. Implementation will be written from observed client behavior, the Bitwarden SDK test vectors, the oracle's responses, and public documentation. We do not copy or transliterate Vaultwarden code, including its constants and structure. Where we need a value that Vaultwarden also uses (for example a list of common KDF settings), we derive it from Bitwarden's documented or observed behavior and record the source in the scenario. If a stricter separation is wanted, it must be decided before M1 (open question 12).
 - We name the project without "Bitwarden" and state that it is unaffiliated.
 - The web vault is an upstream build downloaded at deploy time at a pinned version. Its license must be reviewed before we bundle it anywhere (open question 4).

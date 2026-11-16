@@ -4,6 +4,19 @@ This list comes from reading the route tables of Vaultwarden (`src/api/identity.
 
 Clients call both `/api/...` and `/identity/...`. Several operations have both `POST` and `PUT` (or `DELETE`) spellings because different client versions use different ones. We implement the spellings that real clients call, and each spelling gets its own scenario so none is lost in a refactor.
 
+## Client version differences
+
+The API is not one fixed shape. While reading Vaultwarden's source and its unit tests (November 2026) I found these differences, and they must be handled and tested per client version:
+
+- **Registration payloads.** Registration finish accepts at least two shapes:
+  - a current shape that splits authentication and unlock data (`masterPasswordAuthentication` with a hash, salt and KDF settings, and `masterPasswordUnlock` with the wrapped user key), used by the web vault and iOS since a recent change,
+  - an older flat shape (`masterPasswordHash`, `userSymmetricKey`, `kdf`, `kdfIterations`), still sent by Android before 2026.9.0.
+- **"V2" accounts.** Newer clients can create accounts with an extended key-management state, including a signature key pair and a different cipher format marker. Login for those accounts requires a client-version header, and the minimum version differs by client (for example, the desktop app needs a later version than the web vault). Whether the MVP must support V2 accounts depends on what current clients create by default. This is an M0 spike and open question 11.
+- **Prelogin response.** It carries the KDF settings both flat (`kdf`, `kdfIterations`, `kdfMemory`, `kdfParallelism`) and nested (`kdfSettings`), plus a `salt` that is null.
+- **Multiple spellings** of the same operation (`POST` and `PUT`, `DELETE`), as noted below.
+
+How we handle it: each payload shape and client version is a row in a scenario table with a `client:` column (for example `android 2026.8`, `web 2026.10`, `bw-cli latest`). A new client behavior becomes a new row, so it cannot be silently dropped in a refactor. These shapes come from reading another project's code and tests, so M0 confirms each one against the oracle and the Bitwarden SDK before we rely on it.
+
 ## M0: discovery and health
 
 | Method | Path | Notes |
@@ -17,9 +30,9 @@ Clients call both `/api/...` and `/identity/...`. Several operations have both `
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/identity/accounts/prelogin` | KDF parameters; default parameters for unknown emails |
+| POST | `/identity/accounts/prelogin`, `/identity/accounts/prelogin/password` | KDF settings; deterministic fake settings for unknown emails (see [02](02-architecture.md#authentication)) |
 | POST | `/identity/accounts/register/send-verification-email` | new registration flow used by current clients |
-| POST | `/identity/accounts/register/finish` | stores user key and KDF settings |
+| POST | `/identity/accounts/register/finish` | accepts more than one payload shape, see [client version differences](#client-version-differences) |
 | POST | `/identity/connect/token` | `password` and `refresh_token` grants; creates or updates the device |
 | GET | `/api/accounts/profile` | |
 | PUT, POST | `/api/accounts/profile` | name and similar |
@@ -59,7 +72,7 @@ Clients call both `/api/...` and `/identity/...`. Several operations have both `
 | Item | Notes |
 |---|---|
 | Web vault static assets | Served from the same Worker. API paths take priority over assets. |
-| Rate limits | Login (per email and per IP), registration, prelogin |
+| Rate limits | Strict per-account login throttle (Durable Object); coarse limit on registration and prelogin |
 | Cron | Purge trash older than a configurable number of days, delete expired refresh tokens |
 
 ## Explicitly not in the MVP

@@ -17,13 +17,15 @@ These come from the Cloudflare docs (checked November 2026).
 | D1 Time Travel | 7 days | 30 days | Free-plan backup story |
 | Durable Objects | SQLite-backed only | SQLite-backed | Use SQLite-backed classes only |
 | Durable Object CPU per request | 30 s | 30 s default, up to 5 min | Heavy work can be offloaded here on Free |
+| Durable Object requests and compute | 100,000 requests and 13,000 GB-s per day; operations fail past either | 1 million requests per month included, then metered | Login makes one or two calls; exhausting the quota breaks login on Free |
 | KV max value | 25 MiB | 25 MiB | Attachment ceiling without R2 |
 | R2 | needs a payment method | yes | Optional attachment backend |
 
 Unverified assumptions that the M0 spike must settle before we commit (see [05-delivery-plan.md](05-delivery-plan.md)):
 
 - Whether WebCrypto PBKDF2 with 600,000 iterations counts against the 10 ms CPU limit on Free.
-- Whether the Workers Rate Limiting binding is available on Free.
+- Whether the Workers Rate Limiting binding is available on Free. (Its docs list no plan restriction, but its counts are per location and approximate either way, see [ADR 0005](adr/0005-per-account-durable-object.md).)
+- Which client versions create and require "V2" accounts, and which registration payload shapes real clients send today (see [03-api-surface.md](03-api-surface.md#client-version-differences)).
 - Actual CPU cost of `/api/sync` for 1,000 items.
 
 ## Shape of the system
@@ -43,15 +45,15 @@ Unverified assumptions that the M0 spike must settle before we commit (see [05-d
  |  Domain layer        pure TypeScript, no Cloudflare imports  |
  |        |                                                     |
  |  Ports               VaultStore, UserStore, TokenStore,      |
- |                      PasswordHasher, Clock, Ids, RateLimiter |
+ |                      PasswordHasher, LoginThrottle, Clock, Ids    |
  |        |                                                     |
  |  Adapters  (chosen by the composition root from PLAN_PROFILE)|
  +--------+-----------------+------------------+----------------+
           |                 |                  |
           v                 v                  v
-         D1        Durable Object "Hasher"   KV / R2 (later)
-   (users, devices,   (CPU-heavy work on     (attachments,
-    folders, ciphers)  Free plan)             after MVP)
+         D1        Durable Object "AccountGate"  KV / R2 (later)
+   (users, devices,  (one per account: hashing   (attachments,
+    folders, ciphers) on Free, strict throttle)   after MVP)
 
  Static assets (web vault) are served by the same Worker through
  Workers Static Assets; /api/* and /identity/* go to the code above.
@@ -74,7 +76,7 @@ src/
   ports/           interfaces
   adapters/
     d1/            D1 implementations of the stores
-    do/            Durable Object classes (Hasher, later Notifier)
+    do/            Durable Object classes (AccountGate, later Notifier)
     webcrypto/     hashing and token signing
     memory/        in-memory fakes used only for unit tests of use cases
   http/            Hono routes, request validation (zod), Bitwarden error shapes
@@ -97,14 +99,19 @@ PLAN_PROFILE=free | paid        (set in wrangler config [vars], default: free)
 
 | Concern | `free` profile | `paid` profile |
 |---|---|---|
-| Server-side password hash (PBKDF2 over the client's master password hash) | `DoPasswordHasher`: calls a Durable Object that has a 30 s CPU budget | `InlinePasswordHasher`: runs in the Worker with `limits.cpu_ms` raised |
+| Server-side password hash (PBKDF2 over the client's master password hash) | `AccountGate` Durable Object (one per account) hashes, with a 30 s CPU budget | Inline in the Worker with `limits.cpu_ms` raised |
+| Strict login throttle (failed attempts, lockout) | `AccountGate` | `AccountGate` (same on both plans) |
 | Bulk import | Chunked batches, each within 50 queries and 100 bound parameters | Same code, larger chunks |
-| Rate limiting | Workers Rate Limiting binding if available on Free, otherwise a D1 counter with a coarse window | Rate Limiting binding |
+| Coarse rate limit on registration and prelogin | Workers Rate Limiting binding (approximate, per location); fallback is a Durable Object counter | Rate Limiting binding |
 | Scheduled cleanup | One Cron Trigger (Free allows 5 per account) | Same |
 | Attachments (after MVP) | KV, 25 MiB max, no card needed | R2 |
 | Backups | D1 Time Travel (7 days), plus optional export job | Time Travel (30 days), plus export |
 
-The two hashers implement the same `PasswordHasher` port and share one contract test file, so they cannot drift. See [ADR 0003](adr/0003-plan-profiles-via-adapters.md).
+The two hashers implement the same `PasswordHasher` port and share one contract test file, so they cannot drift. See [ADR 0003](adr/0003-plan-profiles-via-adapters.md) and [ADR 0005](adr/0005-per-account-durable-object.md).
+
+### Account gate (Durable Object)
+
+One SQLite-backed Durable Object per account, named from an HMAC of the normalized email so the id does not reveal the address. It holds only counters and lockout timestamps. Credentials stay in D1; the Worker reads the stored hash from D1 and passes it in. Unknown emails go to a fixed set of shared objects that do the same work against a dummy hash. Details and alternatives are in ADR 0005.
 
 ## Data model (D1)
 
@@ -170,13 +177,14 @@ Design notes:
 ## Authentication
 
 - Client does the key derivation and sends a **master password hash**. The server never sees the master password.
-- The server stores a second, server-side hash of that value, so a database leak does not expose the client-side hash directly. The iteration count is stored per user so it can be raised later.
+- The server stores a second, server-side hash of that value, so a database leak does not expose the client-side hash directly. The iteration count is stored per user.
+- **Hash upgrade on login:** when the configured server-side iteration count is higher than the user's stored one, the hash is recomputed and stored after a successful login. (Vaultwarden does this too.)
 - Login (`POST /identity/connect/token`) supports the `password` and `refresh_token` grants in the MVP.
-- Access tokens are short-lived JWTs signed with a key held in a Workers Secret. Claims include the user id, device id, and security stamp.
-- Refresh tokens are random, stored only as SHA-256 hashes, tied to a device, and rotated on use.
+- Token design is in [ADR 0006](adr/0006-token-signing.md): HMAC-signed access tokens with a purpose claim, random refresh tokens stored as hashes, rotation on use, security-stamp invalidation.
 - Changing the password or calling "deauthorize sessions" changes the security stamp, which invalidates existing access tokens.
-- Login errors do not reveal whether an email exists. `prelogin` returns default KDF parameters for unknown emails.
-- Secrets (`JWT_SIGNING_KEY`) are Workers Secrets. They are never in `wrangler` config, logs, or test data.
+- **Account existence is not revealed.** `prelogin` returns, for an unknown email, KDF settings chosen deterministically from a short list of common settings by a keyed hash of the email, so repeated calls agree with each other and look like a real account. A single fixed default would let an attacker tell unknown emails from users with non-default settings. Login for an unknown email does the same work against a dummy hash.
+- Secret comparisons use `crypto.subtle.timingSafeEqual`.
+- Secrets (`JWT_SIGNING_KEY`, `EMAIL_HMAC_KEY`) are Workers Secrets. They are never in `wrangler` config, logs, or test data.
 
 ## Sync
 
@@ -201,13 +209,15 @@ Bitwarden clients parse specific error bodies, for example `{"message": "...", "
 - Secrets only in Workers Secrets, CI secrets, or `.dev.vars` (git-ignored).
 - Input validated at the HTTP boundary with zod. Domain functions re-check invariants.
 - Parameterized D1 statements only; a lint rule forbids string-built SQL.
-- Rate limits on login, registration, prelogin.
+- Strict per-account login throttle in the account Durable Object; coarse Rate Limiting binding on registration and prelogin ([ADR 0005](adr/0005-per-account-durable-object.md)).
 - Registration closed by default after the first user, controlled by a config flag.
 - Dependency audit and secret scanning run in CI.
-- A short threat model lives with the first auth PR (not in this design PR).
+- [THREAT_MODEL.md](../THREAT_MODEL.md) and [SECURITY.md](../SECURITY.md) are part of the first implementation PR and are updated whenever a change hits a review trigger listed there.
+- The Cloudflare practices checklist in [08-cloudflare-practices.md](08-cloudflare-practices.md) is enforced by CI where possible.
 
 ## Deployment
 
-- `wrangler.jsonc` declares the Worker, D1 and Durable Object bindings, static assets, cron trigger, and the `PLAN_PROFILE` var.
+- `wrangler.jsonc` declares the Worker, D1 and Durable Object bindings, static assets, cron trigger, observability, source maps, `nodejs_compat`, and the `PLAN_PROFILE` var. Bindings are declared per environment, and deploys always pass `--env`.
+- D1 migrations are applied by database name before the new code goes live, and are additive, so two Worker versions can run together.
 - GitHub Actions deploys staging on merge to `main` and production on a tag, applying D1 migrations first.
 - The repository will include a documented "deploy to your own account" path using only `wrangler` and one secret.

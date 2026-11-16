@@ -4,6 +4,8 @@ A Bitwarden-compatible server that runs entirely on Cloudflare (Workers, D1, Dur
 
 **Status: design phase.** No code yet. The MVP design is under review in the first pull request. Implementation starts after the design is approved.
 
+The project is unaudited. See [SECURITY.md](SECURITY.md) and [THREAT_MODEL.md](THREAT_MODEL.md).
+
 This project is not affiliated with Bitwarden, Inc. or the Vaultwarden project.
 
 ## Documentation

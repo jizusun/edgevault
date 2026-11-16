@@ -13,6 +13,8 @@ Facts about Cloudflare limits were checked against the Cloudflare docs in Novemb
 | [05-delivery-plan.md](05-delivery-plan.md) | Milestones, PR slicing, CI stages, definition of done |
 | [06-prior-art.md](06-prior-art.md) | What we learned from existing projects, and what we copy or avoid |
 | [07-open-questions.md](07-open-questions.md) | Decisions the reviewer needs to make |
+| [08-cloudflare-practices.md](08-cloudflare-practices.md) | Cloudflare best practices and how CI enforces them |
+| [../THREAT_MODEL.md](../THREAT_MODEL.md), [../SECURITY.md](../SECURITY.md) | Threat model (draft) and vulnerability reporting policy |
 | [adr/](adr/) | Architecture decision records |
 
 ## Reading order

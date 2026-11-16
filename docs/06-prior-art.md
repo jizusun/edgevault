@@ -8,7 +8,7 @@ What we looked at, what we measured, and what we take from each. Numbers are fro
 |---|---|---|---|---|
 | [warden-worker](https://github.com/qaz741wsd856/warden-worker) | Rust, D1, MIT | 7 | 2 unit tests; none run in CI | Documents Free-plan handling in detail |
 | [NodeWarden](https://github.com/shuaiplus/nodewarden) | TypeScript, D1, R2 or KV, LGPL-3.0 per its README | 28 | 47 cases in 7 files (Node test runner); not run in CI; CodeQL and Semgrep run | Most active; no organizations |
-| [Vaultwarden](https://github.com/dani-garcia/vaultwarden) | Rust, SQLite, MySQL or Postgres, AGPL-3.0 | 100+ | about 67 unit tests in `src/`; nightly Bitwarden SDK live tests | The reference for API behavior; cannot run on Workers |
+| [Vaultwarden](https://github.com/dani-garcia/vaultwarden) | Rust, SQLite, MySQL, Postgres or CockroachDB, AGPL-3.0 | about 220 | about 67 unit tests in `src/`; Playwright end-to-end suite across databases and SSO; nightly Bitwarden SDK live tests | The reference for API behavior; cannot run on Workers. About 70,800 stars; release 1.37.5 on Nov 1, 2026; 98 of its last 100 pull requests merged |
 | [vaultwarden-cloudflare](https://github.com/cybercypher/vaultwarden-cloudflare) | Rust port of Vaultwarden, Workers, D1, KV, R2 | 1 own author, AI-assisted; contributor list is inherited from upstream | README lists an integration suite; not verified | Very new; claims many features including organizations |
 | [vaultwarden-cf](https://github.com/adam0white/vaultwarden-cf) | Vaultwarden in Cloudflare Containers | 1 | none found | Needs an external database; Containers are not a Free-plan option as far as we know |
 
@@ -53,10 +53,18 @@ Take:
 - **The oracle idea**: its workflow `sdk-live-tests.yml` runs the Bitwarden SDK's live end-to-end tests against the server every night. The SDK publishes test vectors and live tests that any compatible server can use.
 - **A test-only seeder** that exists only in a build with an `unsafe_test_mode` feature and is guarded by credentials. We want the same property: test-only code must not be reachable in production builds, enforced by a build flag and a dependency-cruiser rule.
 - **Both `POST` and `PUT`/`DELETE` spellings** for many endpoints, because real clients differ.
+- **Client-version awareness.** Registration accepts two payload shapes (current and an older Android one), and login for "V2" accounts needs a client-version header. Its unit tests use literal payloads per client format. We turn these into `client:` rows in scenario tables.
+- **Deterministic fake KDF settings for unknown emails**, chosen by a keyed hash of the email, so prelogin does not reveal which accounts exist.
+- **KDF upgrade on login**: the stored server-side hash is recomputed when the configured iteration count rises.
+- **Purpose-separated tokens** (login, refresh, invite, Send, download), and constant-time comparison of secrets.
+- **A written threat model** with an actor table, a list of settings that remove a protection on purpose, and an explicit out-of-scope list, plus `SECURITY.md`. Both are owned through CODEOWNERS together with CI workflows. See [../THREAT_MODEL.md](../THREAT_MODEL.md).
+- **CI hygiene beyond tests**: spell check (typos), GitHub Actions security lint (zizmor), Dockerfile lint, image scan, formatting and clippy across a feature matrix.
+- **Open and honest scope**: it documents behavior it does not equalize, such as login timing, and rate limits kept in memory per process and IP.
 
 Avoid:
 
-- Copying code. It is AGPL-3.0; we implement from observed behavior and public docs.
+- Copying code. It is AGPL-3.0. This project is an independent implementation and not a strict clean-room one, because Vaultwarden's source was read during design (see [01-scope.md](01-scope.md#legal-hygiene)).
+- Its in-memory, per-IP rate limits. They reset on restart and are shared by users behind one address. We use a per-account Durable Object instead ([ADR 0005](adr/0005-per-account-durable-object.md)).
 
 ### vaultwarden-cloudflare and vaultwarden-cf
 
@@ -75,6 +83,7 @@ Avoid:
 |---|---|---|
 | Specification | Prose README, few tests | Executable scenario files that are the spec |
 | Mocks | Stubbed storage in some tests | Real D1 and Durable Object in-process; oracle for expectations |
-| Plan support | Free-first; paid is "just remove limits" | Explicit `free` and `paid` profiles behind ports, each tested |
+| Plan support | Free-first; paid is "just remove limits" | Explicit `free` and `paid` profiles behind ports; every scenario runs on both |
+| Brute-force defense | In-memory per-IP limits, or the approximate edge binding | Strict per-account throttle in a Durable Object, with the binding as a coarse extra layer |
 | CI | Build and deploy; security scans in one project | Pyramid stages, harness guard, mutation testing, nightly contract and budget jobs |
 | Free-plan limits | Documented in README | Enforced as budget tests |
