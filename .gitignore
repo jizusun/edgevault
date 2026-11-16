@@ -1,0 +1,10 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env
+.env.*
+dist/
+coverage/
+.stryker-tmp/
+*.log
+.DS_Store
