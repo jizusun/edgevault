@@ -1,13 +1,23 @@
 # 06. Prior art
 
+## Summary
+
+Several projects already run a Bitwarden-compatible server, and we learned from each of them:
+
+- **Vaultwarden** is the mature, widely used reference. It runs on a normal server, so it cannot run on Cloudflare directly, but it shows how the Bitwarden API behaves and how a serious project tests and documents security.
+- **NodeWarden** and **warden-worker** already run on Cloudflare Workers. They prove it can be done, and they show how to fit within the Free plan. Neither supports organizations, and both have very little automated testing.
+- Two smaller Cloudflare ports exist, but they are very new or need paid features.
+
+edgevault takes their good ideas, and adds organizations, TOTP login, and a much stronger testing approach.
+
 What we looked at, what we measured, and what we take from each. Numbers are from the repositories and the GitHub API in November 2026. Contributor counts are for the project's own history.
 
 ## Projects
 
 | Project | Stack | Contributors | Tests found | Notes |
 |---|---|---|---|---|
-| [warden-worker](https://github.com/qaz741wsd856/warden-worker) | Rust, D1, MIT | 7 | 2 unit tests; none run in CI | Documents Free-plan handling in detail |
-| [NodeWarden](https://github.com/shuaiplus/nodewarden) | TypeScript, D1, R2 or KV, LGPL-3.0 per its README | 28 | 47 cases in 7 files (Node test runner); not run in CI; CodeQL and Semgrep run | Most active; no organizations |
+| [warden-worker](https://github.com/qaz741wsd856/warden-worker) | Rust, D1, KV by default with optional R2, MIT | 7 | 2 unit tests; none run in CI | Documents Free-plan handling in detail; no organizations |
+| [NodeWarden](https://github.com/shuaiplus/nodewarden) | TypeScript, D1, R2 by default with optional KV mode, LGPL-3.0 per its README | 28 | 47 cases in 7 files (Node test runner); not run in CI; CodeQL and Semgrep run | Most active; no organizations; an organizations PR has been open, unreviewed, since September 2026 |
 | [Vaultwarden](https://github.com/dani-garcia/vaultwarden) | Rust, SQLite, MySQL, Postgres or CockroachDB, AGPL-3.0 | about 220 | about 67 unit tests in `src/`; Playwright end-to-end suite across databases and SSO; nightly Bitwarden SDK live tests | The reference for API behavior; cannot run on Workers. About 70,800 stars; release 1.37.5 on Nov 1, 2026; 98 of its last 100 pull requests merged |
 | [vaultwarden-cloudflare](https://github.com/cybercypher/vaultwarden-cloudflare) | Rust port of Vaultwarden, Workers, D1, KV, R2 | 1 own author, AI-assisted; contributor list is inherited from upstream | README lists an integration suite; not verified | Very new; claims many features including organizations |
 | [vaultwarden-cf](https://github.com/adam0white/vaultwarden-cf) | Vaultwarden in Cloudflare Containers | 1 | none found | Needs an external database; Containers are not a Free-plan option as far as we know |
@@ -19,7 +29,7 @@ What we looked at, what we measured, and what we take from each. Numbers are fro
 Take:
 
 - **CPU offloading to a Durable Object.** The Free plan's 10 ms CPU limit is too small for server-side PBKDF2 and for large imports. Durable Objects have a 30 s CPU default, and they are available on the Free plan with SQLite storage. Our `free` profile uses the same idea behind a port.
-- **Free vs card-required storage.** KV for attachments (25 MiB, no card) and R2 (100 MB, card needed), with R2 taking priority when configured.
+- **Free vs card-required storage.** KV for attachments (25 MiB, no card) and R2 (100 MB, card needed), with R2 taking priority when configured. (We use R2 as the default instead, like NodeWarden; see [ADR 0007](adr/0007-attachment-storage.md).)
 - **Static assets for the web vault**, with API paths routed to the Worker, and a pinned upstream web vault version.
 - **Built-in rate limiting** on login, registration, and prelogin using the Workers Rate Limiting binding, degrading gracefully if the binding is missing.
 - **Honest scope statement** (personal vault; no organizations).
@@ -83,6 +93,7 @@ Avoid:
 |---|---|---|
 | Specification | Prose README, few tests | Executable scenario files that are the spec |
 | Mocks | Stubbed storage in some tests | Real D1 and Durable Object in-process; oracle for expectations |
+| Organizations | Not supported | Family-sized organizations and collections in the MVP, with a reviewed access table |
 | Plan support | Free-first; paid is "just remove limits" | Explicit `free` and `paid` profiles behind ports; every scenario runs on both |
 | Brute-force defense | In-memory per-IP limits, or the approximate edge binding | Strict per-account throttle in a Durable Object, with the binding as a coarse extra layer |
 | CI | Build and deploy; security scans in one project | Pyramid stages, harness guard, mutation testing, nightly contract and budget jobs |

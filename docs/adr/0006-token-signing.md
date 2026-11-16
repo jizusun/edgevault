@@ -2,6 +2,10 @@
 
 Status: proposed, pending M0 spike 1
 
+## Summary
+
+After login, the server gives the app an **access token** (short-lived, signed with a secret key) and a **refresh token** (a random value, stored only as a hash). Signing uses HMAC, which our POC measured at about 0.015 ms, much cheaper than RSA. Every token says what it is for, so a token for one purpose cannot be used for another.
+
 ## Context
 
 Vaultwarden signs its tokens with RS256 and uses a separate claims structure and issuer for each purpose: login, refresh, invitations, Send access, file downloads, and others. We need a smaller set for the MVP, and we have a 10 ms CPU budget per request on the Free plan.

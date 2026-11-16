@@ -1,5 +1,9 @@
 # Security policy
 
+## Summary
+
+edgevault is young and has **not** been audited. If you find a security problem, please report it privately through GitHub (not in a public issue).
+
 edgevault is **pre-release and unaudited**. Do not use it for secrets you cannot afford to lose until it has had a security review.
 
 ## Reporting a vulnerability

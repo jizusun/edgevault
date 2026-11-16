@@ -1,5 +1,11 @@
 # 08. Cloudflare practices checklist
 
+## Summary
+
+Cloudflare publishes advice for building on Workers, D1, and Durable Objects. This page lists the advice that applies to us, and for each item says **how we make sure we follow it**: usually a CI check or a test, so nobody has to remember it.
+
+The most important points: keep secrets out of code, keep each request small and fast, use indexes and batches in D1, never route everything through one Durable Object, and keep database changes backward-compatible so a deploy can roll out gradually.
+
 Practices taken from Cloudflare's own guidance (checked November 2026), with how each one is enforced in this project. "Enforced by" names a CI check or a test where one exists, so the list does not depend on people remembering it.
 
 Sources: [Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/), [Rules of Durable Objects](https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/), [D1 best practices](https://developers.cloudflare.com/d1/best-practices/), [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/), [Rate Limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/), [Workers limits](https://developers.cloudflare.com/workers/platform/limits/).
@@ -23,7 +29,7 @@ Sources: [Workers best practices](https://developers.cloudflare.com/workers/best
 |---|---|
 | Check body size before reading it (128 MB memory limit); stream when possible | Unit test for the body-limit middleware; import scenario with an oversized payload |
 | No request-scoped state in module globals | Lint rule against module-level mutable state in `src/` |
-| Always `await` or `waitUntil` promises; `waitUntil` has a 30 s limit | `@typescript-eslint/no-floating-promises` or the Biome equivalent |
+| Always `await` or `waitUntil` promises; `waitUntil` has a 30 s limit | Biome's `noFloatingPromises` rule |
 | Do not use `passThroughOnException` | Lint rule |
 | Use bindings, not REST APIs, from inside the Worker | Code review; no Cloudflare API client in runtime dependencies |
 | Use Web Crypto (`crypto.getRandomValues`, `crypto.randomUUID`); never `Math.random` for security | Lint rule banning `Math.random` in `src/` |
@@ -39,7 +45,7 @@ Sources: [Workers best practices](https://developers.cloudflare.com/workers/best
 | Run migrations by database name, not binding name | Deploy script |
 | Apply migrations before the new code is live. Make schema changes additive (add, then backfill, then switch, then remove later), so old and new Worker versions can run together during a deployment | Migration lint: no `DROP` or `RENAME` in the same release as the code that stops using the thing |
 | Skip read replication in the MVP. It needs the Sessions API and a bookmark that clients cannot send, so a client could read stale data right after its own write | ADR if revisited |
-| Time Travel for restore: 7 days on Free, 30 on Paid | Documented in the backup guide (M3) |
+| Time Travel for restore: 7 days on Free, 30 on Paid | Documented in the backup guide (M5) |
 
 ## Durable Objects
 

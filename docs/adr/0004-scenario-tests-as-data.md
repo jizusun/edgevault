@@ -2,6 +2,10 @@
 
 Status: proposed
 
+## Summary
+
+Most of our tests are **plain-text scenario files** instead of test code. Each file says what is set up, what happens, and what must be true afterwards. A small program runs them. They are easier to read and review than test code, and the program refuses any scenario without real checks, so tests cannot be quietly weakened.
+
 ## Context
 
 We expect AI coding agents to write much of the code and many of the tests. Agent-written tests tend to be long, coupled to implementation, mock-heavy, and changed whenever code is refactored. That erodes trust in the suite. The ["Tests as data"](https://martinfowler.com/articles/tests-as-data.html) article describes a way to counter this: customer tests, black-box testing, tests as data, and a small test runner protected from casual change.

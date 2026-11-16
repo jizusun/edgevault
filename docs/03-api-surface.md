@@ -1,80 +1,143 @@
 # 03. API surface for the MVP
 
-This list comes from reading the route tables of Vaultwarden (`src/api/identity.rs`, `src/api/core/*.rs`) and from the Bitwarden clients' documented behavior. It is the starting list, not the final one. **M0 turns each row into at least one scenario, and verifies it against the oracle** (see [04-testing-strategy.md](04-testing-strategy.md#validating-the-tests)). Rows the oracle disproves are corrected in the PR that finds out.
+## Summary
 
-Clients call both `/api/...` and `/identity/...`. Several operations have both `POST` and `PUT` (or `DELETE`) spellings because different client versions use different ones. We implement the spellings that real clients call, and each spelling gets its own scenario so none is lost in a refactor.
+This page lists the web addresses (endpoints) the Bitwarden apps call, grouped by milestone. edgevault has to answer each of them the way the apps expect.
+
+The list comes from three places:
+
+- **traffic we recorded** from a real web vault talking to Vaultwarden ([POC notes](spikes/2026-11-design-pocs.md)),
+- **Vaultwarden's route table**, as a reference,
+- Bitwarden's public behavior.
+
+Rows marked **seen** were observed in recorded traffic. Rows marked **ref** come only from the route table and must be confirmed with recorded traffic in M0. Every row becomes at least one test scenario.
+
+Two things make this harder than a fixed list: **different app versions send different request shapes**, and the web vault **only talks to a server over HTTPS**.
 
 ## Client version differences
 
-The API is not one fixed shape. While reading Vaultwarden's source and its unit tests (November 2026) I found these differences, and they must be handled and tested per client version:
+The API is not one fixed shape. Each difference below is handled as rows in a scenario table with a `client:` column (for example `android 2026.8`, `web 2026.10`, `bw-cli 2026.10`), so a refactor cannot silently drop one.
 
-- **Registration payloads.** Registration finish accepts at least two shapes:
-  - a current shape that splits authentication and unlock data (`masterPasswordAuthentication` with a hash, salt and KDF settings, and `masterPasswordUnlock` with the wrapped user key), used by the web vault and iOS since a recent change,
-  - an older flat shape (`masterPasswordHash`, `userSymmetricKey`, `kdf`, `kdfIterations`), still sent by Android before 2026.9.0.
-- **"V2" accounts.** Newer clients can create accounts with an extended key-management state, including a signature key pair and a different cipher format marker. Login for those accounts requires a client-version header, and the minimum version differs by client (for example, the desktop app needs a later version than the web vault). Whether the MVP must support V2 accounts depends on what current clients create by default. This is an M0 spike and open question 11.
-- **Prelogin response.** It carries the KDF settings both flat (`kdf`, `kdfIterations`, `kdfMemory`, `kdfParallelism`) and nested (`kdfSettings`), plus a `salt` that is null.
-- **Multiple spellings** of the same operation (`POST` and `PUT`, `DELETE`), as noted below.
-
-How we handle it: each payload shape and client version is a row in a scenario table with a `client:` column (for example `android 2026.8`, `web 2026.10`, `bw-cli latest`). A new client behavior becomes a new row, so it cannot be silently dropped in a refactor. These shapes come from reading another project's code and tests, so M0 confirms each one against the oracle and the Bitwarden SDK before we rely on it.
+| Difference | What we know | Source |
+|---|---|---|
+| Registration body | Current web vault sends the split shape: `masterPasswordAuthentication {salt, kdf, masterPasswordAuthenticationHash}`, `masterPasswordUnlock {salt, kdf, masterKeyWrappedUserKey}`, `userAsymmetricKeys`, `emailVerificationToken` | seen (web 2026.10.1) |
+| Older registration body | Flat shape (`masterPasswordHash`, `userSymmetricKey`, `kdf`, `kdfIterations`), sent by Android before 2026.9.0 | ref (Vaultwarden unit tests) |
+| "V2" accounts | Newer clients can create accounts with a signature key pair and a new item format. Login for them needs a client-version header with a per-client minimum version | ref; M0 spike, open question 11 |
+| Prelogin path | Web vault calls `/identity/accounts/prelogin/password`, not `/prelogin` | seen |
+| Prelogin response | KDF settings both flat (`kdf`, `kdfIterations`, `kdfMemory`, `kdfParallelism`) and nested (`kdfSettings`), with `salt: null` | seen |
+| Login response | Includes `AccountKeys.publicKeyEncryptionKeyPair` besides token fields | seen |
+| Email off | `send-verification-email` returns a token in the body, which the client uses directly | seen |
+| HTTPS only | The web vault rejects a server URL that is not HTTPS | seen |
+| Spellings | Many operations accept `POST` and `PUT` (or `DELETE`); each spelling gets its own scenario | ref |
 
 ## M0: discovery and health
 
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/api/alive` | health, no auth |
-| GET | `/api/now` | server time |
-| GET | `/api/version` | server version string |
-| GET | `/api/config` | feature flags and environment URLs the clients read at startup |
+| Method | Path | Source | Notes |
+|---|---|---|---|
+| GET | `/api/alive` | seen | health, no auth |
+| GET | `/api/now` | ref | server time |
+| GET | `/api/version` | ref | server version string |
+| GET | `/api/config` | seen | environment URLs, feature flags, `disableUserRegistration`; called many times |
 
 ## M1: accounts and login
 
+| Method | Path | Source | Notes |
+|---|---|---|---|
+| POST | `/identity/accounts/prelogin/password`, `/identity/accounts/prelogin` | seen, ref | deterministic fake settings for unknown emails |
+| POST | `/identity/accounts/register/send-verification-email` | seen | returns a token when email is off |
+| POST | `/identity/accounts/register/finish` | seen | both payload shapes |
+| POST | `/identity/connect/token` | seen | form-encoded; `password` and `refresh_token` grants; device fields |
+| GET | `/api/devices/knowndevice` | seen | before login |
+| POST | `/api/accounts/key-management/user-key-id` | seen | sent after the first login |
+| GET | `/api/accounts/profile` | seen | includes `premium: true` |
+| PUT, POST | `/api/accounts/profile` | ref | |
+| GET, POST | `/api/accounts/keys` | ref | RSA key pair |
+| GET | `/api/accounts/revision-date` | seen | polled; milliseconds; one indexed read |
+| POST | `/api/accounts/verify-password` | ref | |
+| POST | `/api/accounts/password` | ref | rotates security stamp |
+| POST | `/api/accounts/security-stamp` | ref | deauthorize sessions |
+| GET | `/api/devices` | ref | list sessions |
+| GET | `/api/users/{id}/public-key` | ref | used when confirming organization members (M3) |
+
+## M2: personal vault
+
+| Method | Path | Source | Notes |
+|---|---|---|---|
+| GET | `/api/sync` (often `?excludeDomains=true`) | seen | profile, folders, items, collections, organizations, policies |
+| GET | `/api/folders`, `/api/folders/{id}` | ref | |
+| POST | `/api/folders` | ref | |
+| PUT, POST | `/api/folders/{id}` | ref | |
+| DELETE, POST | `/api/folders/{id}`, `/api/folders/{id}/delete` | ref | |
+| GET | `/api/ciphers`, `/api/ciphers/{id}` | ref | |
+| POST | `/api/ciphers`, `/api/ciphers/create` | ref | |
+| PUT, POST | `/api/ciphers/{id}` | ref | update |
+| PUT, POST | `/api/ciphers/{id}/partial` | ref | folder and favorite only |
+| PUT, POST | `/api/ciphers/{id}/delete` | ref | trash |
+| DELETE | `/api/ciphers/{id}` | ref | permanent delete |
+| PUT | `/api/ciphers/{id}/restore` | ref | |
+| DELETE, POST, PUT | `/api/ciphers`, `/api/ciphers/delete` | ref | bulk delete |
+| PUT | `/api/ciphers/restore` | ref | bulk restore |
+| POST, PUT | `/api/ciphers/move` | ref | bulk move |
+| POST | `/api/ciphers/purge` | ref | requires password |
+| POST | `/api/ciphers/import` | ref | chunked |
+| GET, PUT | `/api/settings/domains` | ref | equivalent domains |
+
+## M3: organizations and collections
+
+All rows are **ref** until M0 captures the web vault's organization flow ([ADR 0008](adr/0008-organizations.md)).
+
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/identity/accounts/prelogin`, `/identity/accounts/prelogin/password` | KDF settings; deterministic fake settings for unknown emails (see [02](02-architecture.md#authentication)) |
-| POST | `/identity/accounts/register/send-verification-email` | new registration flow used by current clients |
-| POST | `/identity/accounts/register/finish` | accepts more than one payload shape, see [client version differences](#client-version-differences) |
-| POST | `/identity/connect/token` | `password` and `refresh_token` grants; creates or updates the device |
-| GET | `/api/accounts/profile` | |
-| PUT, POST | `/api/accounts/profile` | name and similar |
-| GET | `/api/accounts/keys`, POST `/api/accounts/keys` | RSA key pair |
-| GET | `/api/accounts/revision-date` | one cheap read |
-| POST | `/api/accounts/verify-password` | |
-| POST | `/api/accounts/password` | changes password, rotates security stamp |
-| POST | `/api/accounts/security-stamp` | deauthorize sessions |
-| GET | `/api/devices/knowndevice` | clients call it before login |
-| GET | `/api/devices` | list sessions |
+| POST | `/api/organizations` | create; body carries the org key encrypted for the owner and the org key pair |
+| GET, PUT, POST | `/api/organizations/{orgId}` | read and rename |
+| DELETE | `/api/organizations/{orgId}` | owner only, requires password |
+| POST | `/api/organizations/{orgId}/leave` | |
+| GET | `/api/organizations/{orgId}/public-key`, `/keys` | org key pair |
+| GET | `/api/organizations/{orgId}/users`, `/users/mini-details` | member list |
+| POST | `/api/organizations/{orgId}/users/invite` | by email; accepted on registration when email is off |
+| POST | `/api/organizations/{orgId}/users/{memberId}/accept` | |
+| POST | `/api/organizations/{orgId}/users/{memberId}/confirm`, `/users/confirm` | owner or admin sends org key encrypted for the member |
+| POST | `/api/organizations/{orgId}/users/public-keys` | public keys of members to confirm |
+| GET, PUT | `/api/organizations/{orgId}/users/{memberId}` | role, collection access |
+| PUT | `/api/organizations/{orgId}/users/{memberId}/revoke`, `/restore` | and bulk forms |
+| DELETE | `/api/organizations/{orgId}/users/{memberId}`, `/users` | remove |
+| POST | `/api/organizations/{orgId}/users/{memberId}/reinvite` | |
+| GET | `/api/collections` | collections the user can see |
+| GET, POST | `/api/organizations/{orgId}/collections` | list, create |
+| GET | `/api/organizations/{orgId}/collections/details`, `/{colId}/details`, `/{colId}/users` | |
+| PUT | `/api/organizations/{orgId}/collections/{colId}` | rename, access |
+| DELETE | `/api/organizations/{orgId}/collections/{colId}` | |
+| POST | `/api/organizations/{orgId}/collections/bulk-access` | |
+| POST, PUT | `/api/ciphers/{id}/share`, `/api/ciphers/share` | move a personal item into the organization |
+| PUT, POST | `/api/ciphers/{id}/collections`, `/collections_v2` | change an item's collections |
+| POST | `/api/ciphers/bulk-collections` | |
+| GET | `/api/ciphers/organization-details`, `/organization-details/assigned` | admin view |
+| POST | `/api/ciphers/import-organization` | |
+| GET | `/api/organizations/{orgId}/policies` | returns an empty list (policies not supported) |
+| GET | billing and plan endpoints the web vault calls | fixed self-hosted values; exact list from M0 capture |
 
-## M2: vault
+## M4: login two-factor (TOTP)
+
+All rows are **ref** until M0 captures the flow ([ADR 0009](adr/0009-totp.md)).
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/sync` | profile, folders, ciphers, domains in one response |
-| GET | `/api/folders`, GET `/api/folders/{id}` | |
-| POST | `/api/folders` | |
-| PUT, POST | `/api/folders/{id}` | |
-| DELETE, POST | `/api/folders/{id}`, `/api/folders/{id}/delete` | |
-| GET | `/api/ciphers`, GET `/api/ciphers/{id}` | |
-| POST | `/api/ciphers`, `/api/ciphers/create` | create |
-| PUT, POST | `/api/ciphers/{id}` | update |
-| PUT, POST | `/api/ciphers/{id}/partial` | folder and favorite only |
-| PUT, POST | `/api/ciphers/{id}/delete` | soft delete (trash) |
-| DELETE | `/api/ciphers/{id}` | permanent delete |
-| PUT | `/api/ciphers/{id}/restore` | |
-| DELETE, POST, PUT | `/api/ciphers`, `/api/ciphers/delete` | bulk delete |
-| PUT | `/api/ciphers/restore` | bulk restore |
-| POST, PUT | `/api/ciphers/move` | bulk move to folder |
-| POST | `/api/ciphers/purge` | delete all items (requires password) |
-| POST | `/api/ciphers/import` | import of client-encrypted items and folders, chunked |
-| GET, PUT | `/api/settings/domains` | equivalent domains; global list can start empty |
+| GET | `/api/two-factor` | which providers are on |
+| POST | `/api/two-factor/get-authenticator` | new secret for setup (requires password) |
+| POST, PUT | `/api/two-factor/authenticator` | turn on with a valid code |
+| DELETE | `/api/two-factor/authenticator` | turn off (requires password) |
+| POST | `/api/two-factor/get-recover` | show the recovery code (requires password) |
+| POST | recovery-code login path | exact path from M0 capture |
+| POST | `/identity/connect/token` | 2FA fields (`twoFactorToken`, `twoFactorProvider`, `twoFactorRemember`); exact names from M0 capture |
 
-## M3: delivery
+## M5: delivery
 
 | Item | Notes |
 |---|---|
-| Web vault static assets | Served from the same Worker. API paths take priority over assets. |
-| Rate limits | Strict per-account login throttle (Durable Object); coarse limit on registration and prelogin |
-| Cron | Purge trash older than a configurable number of days, delete expired refresh tokens |
+| Web vault static assets | Served from the same Worker; API paths take priority |
+| Rate limits | Strict per-account throttle (Durable Object); coarse limit on registration and prelogin |
+| Cron | Purge old trash, expired refresh tokens, stale invites |
 
-## Explicitly not in the MVP
+## Not in the MVP
 
-Anything under organizations, collections, sends, attachments, emergency access, two-factor providers, WebAuthn, auth requests (login with device), events, admin, SSO, push, and the notifications hub. Unsupported paths return a Bitwarden-shaped error, so clients show a clear message instead of a parse failure. A scenario covers that behavior.
+Sends, attachments, emergency access, other two-factor providers, WebAuthn, login with device (auth requests), events, admin, SSO, groups, policies (beyond an empty list), push, and the notifications hub. Unsupported paths return a Bitwarden-shaped error, so clients show a clear message instead of failing to parse. A scenario covers that behavior.

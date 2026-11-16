@@ -1,6 +1,10 @@
 # ADR 0005: One Durable Object per account for credential checks
 
-Status: proposed, pending M0 spikes 1 and 2
+Status: proposed. Local POC confirmed hashing does not fit a Free-plan Worker (about 100 ms vs 10 ms); hosted measurement and spike 2 still pending
+
+## Summary
+
+Each account gets its own small **Durable Object**, the *account gate*. It checks passwords and TOTP codes and blocks anyone who guesses wrong too often. On the Free plan it also does the password hashing, which is too slow (about 100 ms) for a normal Free-plan request (10 ms). One object per account avoids a single bottleneck and gives exact, per-account limits that the built-in rate limiter cannot.
 
 ## Context
 
@@ -19,8 +23,9 @@ Create one Durable Object (`AccountGate`, SQLite-backed) per account.
 - **Methods (RPC, not `fetch`):**
   - `verifyPassword(clientHash, storedHash, salt, iterations)`: hashes, compares in constant time, records the attempt, enforces lockout.
   - `hashPassword(clientHash, iterations)`: used at registration and password change.
+  - `verifyTotp(code, encryptedSecret)`: checks a TOTP code, rejects replays using the last accepted time step, and counts failures together with password failures ([ADR 0009](0009-totp.md)).
   - `status()`: failed-attempt counters for tests and operators.
-- **State in the object:** only counters and lockout timestamps. **Credentials stay in D1.** The Worker reads the stored hash from D1 and passes it in, so there is no second copy of credentials to keep consistent.
+- **State in the object:** only counters, lockout timestamps, and the last accepted TOTP time step. **Credentials stay in D1.** The Worker reads the stored hash from D1 and passes it in, so there is no second copy of credentials to keep consistent.
 - **Strict throttle:** failed attempts per account within a window, with exponential backoff. Counters expire through an idempotent alarm.
 - **Unknown emails:** route to one of a fixed number (default 16) of shared "unknown" objects, chosen by a keyed hash of the email. They do the same amount of CPU work against a dummy hash, so response time does not reveal whether an account exists, and an attacker cannot create unlimited objects.
 - **Profile behavior (see [ADR 0003](0003-plan-profiles-via-adapters.md)):**

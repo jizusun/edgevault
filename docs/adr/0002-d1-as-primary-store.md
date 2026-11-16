@@ -2,6 +2,10 @@
 
 Status: proposed
 
+## Summary
+
+All accounts, vault items, organizations, and settings are stored in **D1**, Cloudflare's SQL database. It fits a family easily within the Free plan, supports transactions and indexes, and offers point-in-time restore. Durable Objects are used only for small, per-account jobs, not as the main database.
+
 ## Context
 
 Vault data is relational and small per user: users, devices, folders, ciphers. We need it to work on the Free plan and to be backed up.

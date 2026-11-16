@@ -2,13 +2,17 @@
 
 Status: proposed, pending M0 spike 1 and spike 2
 
+## Summary
+
+The same code runs on the **Free** and **Paid** plans. Where the plans differ (mainly how much CPU a request may use), we plug in a different implementation behind the same interface, chosen by one setting. The business rules never ask which plan they are on, and both implementations pass the same tests.
+
 ## Context
 
 Free and Paid Workers plans differ in CPU time per request (10 ms vs 30 s default), in daily D1 caps, and in access to R2. We want one codebase that is correct on both.
 
 ## Decision
 
-Define ports for everything whose implementation depends on the plan (`PasswordHasher`, later `BlobStore`). Per-account login throttling is the same on both plans and is described in [ADR 0005](0005-per-account-durable-object.md). Provide one adapter per plan profile. A composition root reads `PLAN_PROFILE` (`free` or `paid`) and wires adapters. Domain and application code never reads the profile.
+Define ports for everything whose implementation depends on the plan (`PasswordHasher`, later `BlobStore`). Per-account login throttling is the same on both plans and is described in [ADR 0005](0005-per-account-durable-object.md). The attachment backend is a separate setting that depends on whether the account has a card, not on the Workers plan ([ADR 0007](0007-attachment-storage.md)). Provide one adapter per plan profile. A composition root reads `PLAN_PROFILE` (`free` or `paid`) and wires adapters. Domain and application code never reads the profile.
 
 Both adapters for a port run the same contract test file.
 
@@ -21,7 +25,7 @@ Both adapters for a port run the same contract test file.
 
 ## Open points for the M0 spikes
 
-- If WebCrypto PBKDF2 turns out not to count against Free CPU time, the `free` profile could hash inline and the Durable Object path becomes optional.
+- Local POC: PBKDF2 at 600,000 iterations takes about 100 ms, ten times the Free limit, so the `free` profile hashes in the Durable Object. A hosted measurement in M0 confirms it.
 - If the Rate Limiting binding turns out to be unavailable on Free, the coarse first layer falls back to a counter inside a Durable Object, and we document the extra Durable Object requests. The strict per-account throttle does not depend on the binding.
 
 ## Alternatives considered
